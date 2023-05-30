@@ -1,0 +1,330 @@
+Операционные системы и виртуализация (Linux) (семинары)
+Урок 6. Запуск стека для веб-приложения
+Задание:
+* Установить Nginx и настроить его на работу с PHP-FPM.
+* Установить Apache. Настроить обработку PHP. Добиться одновременной работы с Nginx.
+* Настроить схему обратного прокси для Nginx (динамика - на Apache).
+* Установить MySQL. Создать новую базу данных и таблицу в ней.
+* * Установить пакет phpmyadmin и запустить его веб-интерфейс для управления MySQL.
+* * Настроить схему балансировки трафика между несколькими серверами Apache на стороне Nginx 
+с помощью модуля ngx_http_upstream_module.
+*
+
+Сдайте задание до: 1 марта, 20:00 +03:00 UTC
+
+
+* Установить Nginx и настроить его на работу с PHP-FPM.
+petrv@petrv-linux:~$ sudo su
+[sudo] пароль для petrv:
+root@petrv-linux:/home/petrv# apt install curl
+root@petrv-linux:/home/petrv# curl -L http://ya.ru
+root@petrv-linux:/home/petrv# ss -ntlp
+root@petrv-linux:/home/petrv# ps afx
+root@petrv-linux:/home/petrv# curl localhost
+Веб-сервер работает
+<title>Welcome to nginx!</title>
+<p><em>Thank you for using nginx.</em></p>
+Отвечает страницей
+root@petrv-linux:/home/petrv# cd /etc/nginx
+root@petrv-linux:/etc/nginx# ll
+Здесь основной конфиг:
+-rw-r--r--   1 root root  1447 июл 27  2022 nginx.conf
+root@petrv-linux:/etc/nginx# nano inginx.conf
+root@petrv-linux:/etc/nginx# nginx -t         //проверяем конфигурацию
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+root@petrv-linux:/etc/nginx# systemctl reload nginx  
+root@petrv-linux:/etc/nginx# ps afx          //Смотрим список процессов
+root@petrv-linux:/etc/nginx# ll
+root@petrv-linux:/etc/nginx# cd sites-enabled/
+root@petrv-linux:/etc/nginx/sites-enabled# ll
+root@petrv-linux:/etc/nginx/sites-enabled# nano default
+server {
+        listen 80 default_server;
+        listen [::]:80 default_server;
+
+        root /var/www/html;
+
+        index index.html index.htm index.nginx-debian.html;
+
+        server_name _;
+(server_name site.ru www.site.ru; // Здесь прописал доменные имена, 
+                                  //которые должны соответствовать этому сайту)
+nginx используем его по умолчаниют(по 80му порту)
+root@petrv-linux:/etc/nginx/sites-enabled#
+root@petrv-linux:/etc/nginx/sites-enabled# nano default
+
+* Установить Apache. Настроить обработку PHP. Добиться одновременной работы с Nginx.
+
+root@petrv-linux:/etc/nginx/sites-enabled# apt install apache2  //Установил пакет
+
+root@petrv-linux:/etc/nginx/sites-enabled# ps afx               //проверка -запущен он или нет
+root@petrv-linux:/etc/nginx/sites-enabled# ss -ntlp
+работает только nginx
+процесса apache2 нет, потому что 80ый порт 
+в данный момент занят процессом ngnix
+
+root@petrv-linux:/etc/nginx/sites-enabled# apachectl -t
+Syntax OK
+root@petrv-linux:/etc/nginx/sites-enabled# systemctl status apache2  //смотрю статус
+
+root@petrv-linux:/etc/nginx/sites-enabled# cd /etc/apache2    //Захожу в директорию с конфигурацией
+root@petrv-linux:/etc/apache2# nano ports.conf
+Меняю:
+Listen 80
+на
+Listen 8080
+root@petrv-linux:/etc/apache2# apachectl -t
+Syntax OK
+root@petrv-linux:/etc/apache2# systemctl start apache2        //Запускаю apache
+root@petrv-linux:/etc/apache2# systemctl status apache2
+root@petrv-linux:/etc/apache2# ps afx                         //Смотрю список процессов
+root@petrv-linux:/etc/apache2# ss -ntlp                       //Проверяем наличие сокета
+root@petrv-linux:/etc/apache2# cd sites-enabled/
+root@petrv-linux:/etc/apache2/sites-enabled# ll
+root@petrv-linux:/etc/apache2/sites-enabled# nano 000-default.conf
+Меняю:
+<VirtualHost *:80> на <VirtualHost *:8080>
+root@petrv-linux:/etc/apache2/sites-enabled# apachectl -t    //Тестируем
+Syntax OK
+root@petrv-linux:/etc/apache2/sites-enabled# systemctl reload apache2
+root@petrv-linux:/etc/apache2/sites-enabled# curl localhost:8080   //получил страницу, 
+                                                                   //которую установил apache
+ngnix СЛУШАЕТ ПОРТ 80
+apache СЛУШАЕТ ПОРТ 8080
+Оба сервера работают
+
+||
+Настроил проброс портов для веб-сервера:
+настоил порт 9080 и 8080
+
+root@petrv-linux:/etc/nginx/sites-enabled# nano default       //Заходим на сайт
+
+Вставляю код:
+
+            location / {
+                # First attempt to serve request as file, then
+                # as directory, then fall back to displaying a 404.
+                #try_files $uri $uri/ =404;
+                proxy_pass http://localhost:8025;
+                proxy_set_header Host $host;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Real-IP $remote_addr;
+        }
+
+
+
+        # pass PHP scripts to FastCGI server
+        #
+        location ~ \.php$ {
+                include snippets/fastcgi-php.conf;
+                root /var/www/html;
+                # With php-fpm (or other unix sockets):
+                fastcgi_pass unix:/run/php/php7.4-fpm.sock;
+        #       # With php-cgi (or other tcp sockets):
+        #       fastcgi_pass 127.0.0.1:9000;
+        }
+
+        # Static files location
+       location ~* ^.+.ttf|eot|svg|woff|jpg|jpeg|gif|png|ico|css|zip|tgz|gz|rar|bz2|doc|docx|xlsx|pptx|xls|exe|pdf|pp>#
+                include /etc/nginx/static.conf;
+}
+
+root@petrv-linux:/etc/nginx/sites-enabled# nginx -t               //Тестирую
+
+root@petrv-linux:/etc/nginx/sites-enabled# systemctl reload nginx
+
+В браузере на сайте localhost:9080
+появился логотип в верхнем левом углу
+Потому что сейчас это запрос 
+обработан на стороне apache
+но нам отвечает nginx
+
+Работает схема Reverse proxy(Работает 2 веб-сервера frontend and backend)
+
+Нужно подключить схему Reverse proxy для обработки динамических запросов
+Здесь будем использовать язык PHP
+
+// Ставим пакет для работы с веб-сервером Apache и интерпретатор php8.1 для apache:
+
+root@petrv-linux:/etc/nginx/sites-enabled# apt install php8.1 libapache2-mod-php8.1 
+
+root@petrv-linux:/etc/nginx/sites-enabled# cd /etc/apache2
+root@petrv-linux:/etc/apache2# ll
+root@petrv-linux:/etc/apache2# cd mods-enabled/
+root@petrv-linux:/etc/apache2/mods-enabled# ll
+root@petrv-linux:/etc/apache2/mods-enabled# cat php8.1.conf
+root@petrv-linux:/etc/apache2/mods-enabled# cd /var/www/html
+root@petrv-linux:/var/www/html# cat > info.php      //Создаем файл info.php в /var/www/html  
+
+<?php
+phpinfo();
+?>
+
+Пишем в поисковой строке браузера:
+localhost:9080/info.php
+
+На странице отображается отладочная информация
+по версии php8.1
+и этот запрос обработал apache2
+(Server API	Apache 2.0 Handler)
+Configuration File (php.ini) Path	/etc/php/8.1/apache2
+
+Сейчас использовался вариант запуска PHP-кода через
+модуль сервера Apache
+
+2ой, альтернативный вариант – запуск PHP-кода через отдельный сервер PHP-FPM,
+который может заменить Apache в нашей схеме обратного прокси:
+
+Установить сервер PHP-FPM пакетом php8.1-fpm
+Он будет по умолчанию слушать UNIX-сокет
+
+Подключаем блок:
+location ~ \.php$ {
+include snippets/fastcgi-php.conf;
+root /var/www/html;
+fastcgi_pass unix:/run/php/php8.1-fpm.sock;
+}
+
+он будет использовать одну директиву include
+общих параметров php-fpm, которая отправляет запросы на сервер php-fpm
+
+root@petrv-linux:/etc/nginx/sites-enabled# apt install php8.1-fpm    //Установил пакет
+
+root@petrv-linux:/etc/nginx/sites-enabled# ps afx
+
+Есть 2 два процесса php-fpm:
+  16682 ?        S      0:00  \_ php-fpm: pool www
+  16683 ?        S      0:00  \_ php-fpm: pool www
+
+root@petrv-linux:/etc/nginx/sites-enabled# cd /etc/php
+root@petrv-linux:/etc/php# ll
+итого 20
+drwxr-xr-x   3 root root  4096 фев 24 19:25 ./
+drwxr-xr-x 136 root root 12288 фев 24 19:25 ../
+drwxr-xr-x   6 root root  4096 фев 25 02:27 8.1/
+
+root@petrv-linux:/etc/php# cd 8.1/
+root@petrv-linux:/etc/php/8.1#
+root@petrv-linux:/etc/php/8.1# cd fpm/
+root@petrv-linux:/etc/php/8.1/fpm# ll
+root@petrv-linux:/etc/php/8.1/fpm# cd pool.d/
+root@petrv-linux:/etc/php/8.1/fpm/pool.d# nano www.conf
+
+Вношу изменения в конфигурацию сайта(раскомментировал код):
+
+root@petrv-linux:/etc/php/8.1/fpm/pool.d# cd /etc/nginx
+root@petrv-linux:/etc/nginx# cd sites-enabled/
+root@petrv-linux:/etc/nginx/sites-enabled# nano default
+
+        location ~ \.php$ {
+                include snippets/fastcgi-php.conf;
+                root /var/www/html;
+                # With php-fpm (or other unix sockets):
+                fastcgi_pass unix:/run/php/php7.4-fpm.sock;
+        #       # With php-cgi (or other tcp sockets):
+        #       fastcgi_pass 127.0.0.1:9000;
+        }
+
+root@petrv-linux:/etc/nginx/sites-enabled# nginx -t
+root@petrv-linux:/etc/nginx/sites-enabled# systemctl reload nginx
+
+root@petrv-linux:/etc/nginx/sites-enabled# nano default
+
+Исправил в строчке:
+fastcgi_pass unix:/run/php/php7.4-fpm.sock;
+
+версию php7.4  на версию php8.1
+fastcgi_pass unix:/run/php/php8.1-fpm.sock;
+
+root@petrv-linux:/etc/nginx/sites-enabled# nginx -t              //Проверяю конфигурацию
+root@petrv-linux:/etc/nginx/sites-enabled# systemctl reload nginx
+
+По адресу, который проброшен на nginx запрашиваю файл 
+info.php
+
+http://localhost:9080/info.php
+
+Ответил nginx с использованием backend FastCGI т.е. php-fpm
+
+Server API	FPM/FastCGI
+
+Здесь другая конфигурация:
+Configuration File (php.ini) Path	/etc/php/8.1/fpm
+
+Работает схема Reverse proxy(Работает 2 веб-сервера frontend and backend)
+Только в данном случае в качестве backend не Apache а PHP-FPM.
+
+* Установить MySQL. Создать новую базу данных и таблицу в ней.
+
+roor@gb-Linux:/etc/nginx/sites-enabled# apt install mysgl-server-8.0
+root@petrv-linux:/etc/nginx/sites-enabled# ps afx             //Смотрим список процессов
+Сервер mysqld запущен:
+    814 ?        Ssl    3:29 /usr/sbin/mysqld
+
+root@petrv-linux:/etc/nginx/sites-enabled# ss -ntlp
+
+LISTEN         0               151                 127.0.0.1:3306               0.0.0.0:*             
+users:(("mysqld",pid=814,fd=33))
+
+Слушает только localhost(127.0.0.1)
+
+root@petrv-linux:/etc/nginx/sites-enabled# mysql
+
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 9
+Server version: 8.0.32-0ubuntu0.22.04.2 (Ubuntu)
+Copyright (c) 2000, 2023, Oracle and/or its affiliates.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql>
+mysql> show databases;  // Посмотрим какие есть базы данных
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mysql              |
+| performance_schema |
+| sys                |
++--------------------+
+4 rows in set (0,02 sec)
+
+mysql>
+mysql> use mysql;
+mysql> show tables;
+mysql> SELECT * FROM user\G
+mysql> CREATE DATABASE petrv;          //Создал новую базу данных petrv
+mysql> SHOW DATABASES;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mysql              |
+| performance_schema |
+| petrv              |
+| sys                |
++--------------------+
+5 rows in set (0,18 sec)
+mysql> use petrv
+mysql> show tables;
+mysql> CREATE TABLE test (i INT);       // Создал таблицу
+mysql> INSERT INTO test (i) VALUES (1), (2), (3), (4);
+mysql> SELECT * FROM test;
++------+
+| i    |
++------+
+|    1 |
+|    2 |
+|    3 |
+|    4 |
++------+
+4 rows in set (0,01 sec)
+mysql>
+mysql> exit
+Bye
+root@petrv-linux:/etc/nginx/sites-enabled#

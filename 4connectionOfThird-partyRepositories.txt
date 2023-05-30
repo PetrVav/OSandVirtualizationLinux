@@ -1,0 +1,174 @@
+Операционные системы и виртуализация (Linux) (семинары)
+Урок 4. Подключение сторонних репозиториев, ручная установка пакетов
+Задание:
+1. Подключить дополнительный репозиторий на выбор: Docker, Nginx, Oracle MySQL. 
+Установить любой пакет из этого репозитория.
+2. Установить и удалить deb-пакет с помощью dpkg.
+3. Установить и удалить snap-пакет.
+4. Добавить задачу для выполнения каждые 3 минуты (создание директории, запись в файл).
+5. * Подключить PPA-репозиторий на выбор. Установить из него пакет. Удалить PPA из системы.
+6. * Создать задачу резервного копирования (tar) домашнего каталога пользователя. 
+Реализовать с использованием пользовательских crontab-файлов.
+
+Результат:
+Текст команд, которые применялись при выполнении задания. 
+При наличи: часть конфигурационных файлов, которые решают задачу. 
+Присылаем в формате текстового документа: задание и команды для решения (без вывода). 
+Формат - PDF (один файл на все задания).
+
+Сдайте задание до: 22 февр., 20:00 +03:00 UTC
+
+
+//1. Подключить дополнительный репозиторий на выбор: Docker, Nginx, Oracle MySQL.
+
+petrv@petrv-linux:~$ sudo apt update
+petrv@petrv-linux:~$ sudo apt install gnupg
+petrv@petrv-linux:~$ cd /tmp
+petrv@petrv-linux:/tmp$ wget https://dev.mysql.com/get/mysql-apt-config_0.8.13-1_all.deb
+
+Установить любой пакет из этого репозитория.
+//2. Установить deb-пакет с помощью dpkg.
+sudo dpkg -i mysql-apt-config*
+sudo apt update
+sudo apt upgrade
+sudo apt install mysql-server
+sudo systemctl status mysql
+petrv@petrv-linux:~/Загрузки$ cd
+petrv@petrv-linux:~$ sudo systemctl start mysql
+[sudo] пароль для petrv:
+
+petrv@petrv-linux:~$ sudo su
+root@petrv-linux:/home/petrv# cd /tmp
+root@petrv-linux:/tmp# mysql
+
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 12
+Server version: 8.0.32-0ubuntu0.22.04.2 (Ubuntu)
+Copyright (c) 2000, 2023, Oracle and/or its affiliates.
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+mysql> 
+mysql> SHOW DATABASES;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mysql              |
+| performance_schema |
+| sys                |
++--------------------+
+4 rows in set (0,24 sec)
+mysql>
+
+mysql> exit
+Bye
+root@petrv-linux:/tmp# exit
+exit
+petrv@petrv-linux:/tmp$ sudo systemctl stop mysql
+[sudo] пароль для petrv:
+petrv@petrv-linux:/tmp$ sudo systemctl status mysql
+○ mysql.service - MySQL Community Server
+     Loaded: loaded (/lib/systemd/system/mysql.service; enabled; vendor preset: enabled)
+     Active: inactive (dead) since Sat 2023-02-18 02:05:47 MSK; 26s ago
+    Process: 9608 ExecStartPre=/usr/share/mysql/mysql-systemd-start pre (code=exited, status=0/SUCCESS)
+    Process: 9616 ExecStart=/usr/sbin/mysqld (code=exited, status=0/SUCCESS)
+   Main PID: 9616 (code=exited, status=0/SUCCESS)
+     Status: "Server shutdown complete"
+        CPU: 1min 5.055s
+
+фев 18 01:18:06 petrv-linux systemd[1]: Starting MySQL Community Server...
+фев 18 01:18:09 petrv-linux systemd[1]: Started MySQL Community Server.
+фев 18 02:05:46 petrv-linux systemd[1]: Stopping MySQL Community Server...
+фев 18 02:05:47 petrv-linux systemd[1]: mysql.service: Deactivated successfully.
+фев 18 02:05:47 petrv-linux systemd[1]: Stopped MySQL Community Server.
+фев 18 02:05:47 petrv-linux systemd[1]: mysql.service: Consumed 1min 5.055s CPU time.
+petrv@petrv-linux:/tmp$
+
+petrv@petrv-linux:/tmp$ cd
+petrv@petrv-linux:~$ mysql --version
+mysql  Ver 8.0.32-0ubuntu0.22.04.2 for Linux on x86_64 ((Ubuntu))
+petrv@petrv-linux:~$
+
+//2. Удалить deb-пакет.
+
+petrv@petrv-linux:~$ sudo apt purge mysql-server mysql-common mysql-server-core-* mysql-client-core-*
+petrv@petrv-linux:~$ sudo apt autoremove
+petrv@petrv-linux:~$ sudo rm -rf /var/lib/mysql/
+petrv@petrv-linux:~$ sudo rm -rf /etc/mysql/
+petrv@petrv-linux:~$ sudo rm -rf /var/log/mysql
+petrv@petrv-linux:~$ sudo deluser --remove-home mysq
+petrv@petrv-linux:~$ sudo delgroup mysql
+
+//3. Установить и удалить snap-пакет.
+
+petrv@petrv-linux:~$ sudo snap install gimp
+[sudo] пароль для petrv:
+gimp 2.10.30 от Snapcrafters установлен
+petrv@petrv-linux:~$ gimp
+
+petrv@petrv-linux:~$ sudo snap remove gimp
+[sudo] пароль для petrv:
+gimp удалено
+petrv@petrv-linux:~$
+
+4. Добавить задачу для выполнения каждые 3 минуты (создание директории, запись в файл).
+
+*/3 * * * * /usr/bin/php /script/run.php >> /var/log/run.log
+
+
+5. * Подключить PPA-репозиторий на выбор. Установить из него пакет. Удалить PPA из системы.
+
+apt-add-repository ppa:nginx/stable //подключил PPA-репозиторий
+sudo apt-get install stable  //Установка последней версии приложения stable
+
+
+Удаление репозитория PPA:
+
+sudo add-apt-repository --remove ppa:nginx/stable  // Удалил только PPA репозиторий
+ppa-purge ppa:nginx/stable //Удалил пакет програмного обеспечения
+
+
+6. * Создать задачу резервного копирования (tar) домашнего каталога пользователя. 
+Реализовать с использованием пользовательских crontab-файлов.
+
+petrv@petrv-linux:~$ crontab -e
+
+0 5 * * 1 tar -zcf /var/backups/home.tgz /home/    //Раскомментировал, 
+                                                   //сохранил и вышел из nano
+petrv@petrv-linux:~$
+
+это будет ежемесячная задача(резервное копирование учетных записей)
+Автоматически запустится 
+в первый день недели 
+в 5 часов утра 0 минут
+
+0 5 * * 1 tar -zcf /var/backups/home.tgz /home/
+
+petrv@petrv-linux:~$ crontab -l  //посмотрел crontab файл
+
+# Edit this file to introduce tasks to be run by cron.
+#
+# Each task to run has to be defined through a single line
+# indicating with different fields when the task will be run
+# and what command to run for the task
+#
+# To define the time you can provide concrete values for
+# minute (m), hour (h), day of month (dom), month (mon),
+# and day of week (dow) or use '*' in these fields (for 'any').
+#
+# Notice that tasks will be started based on the cron's system
+# daemon's notion of time and timezones.
+#
+# Output of the crontab jobs (including errors) is sent through
+# email to the user the crontab file belongs to (unless redirected).
+#
+# For example, you can run a backup of all your user accounts
+# at 5 a.m every week with:
+0 5 * * 1 tar -zcf /var/backups/home.tgz /home/
+#
+# For more information see the manual pages of crontab(5) and cron(8)
+#
+# m h  dom mon dow   command
+

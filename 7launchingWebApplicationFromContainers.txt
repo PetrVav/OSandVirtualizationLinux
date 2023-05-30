@@ -1,0 +1,226 @@
+Операционные системы и виртуализация (Linux) (семинары)
+Урок 7. Запуск веб-приложения из контейнеров
+Задание:
+Установить в виртуальную машину или VDS Docker, 
+настроить набор контейнеров через docker compose по инструкции 
+по ссылке: https://www.digitalocean.com/community/tutorials/how-to-install-wordpress-with-docker-compose-ru. 
+Часть с настройкой certbot и HTTPS опустить, если у вас нет настоящего домена и белого IP.
+* Запустить два контейнера, связанные одной сетью (используя документацию). 
+Первый контейнер БД (например, образ mariadb:10.8), второй контейнер — phpmyadmin. 
+Получить доступ к БД в первом контейнере через второй контейнер (веб-интерфейс phpmyadmin).
+
+Результат:
+Текст команд, которые применялись при выполнении задания. 
+При наличии: часть конфигурационных файлов, которые решают задачу. 
+Скриншоты результата запуска контейнеров (веб-интерфейс). 
+Присылаем в формате текстового документа: задание и команды для решения (без вывода). 
+Формат — PDF (один файл на все задания).
+
+Сдайте задание до: 4 марта, 17:00 +03:00 UTC
+
+petrv@petrv-linux:~$ sudo su
+[sudo] пароль для petrv:
+root@petrv-linux:/home/petrv# mkdir wordpress && cd wordpress
+root@petrv-linux:/home/petrv/wordpress# mkdir nginx-conf
+root@petrv-linux:/home/petrv/wordpress# nano nginx-conf/nginx.conf
+
+server {
+        listen 80;
+        listen [::]:80;
+        
+        server_name github.com www.github.com;   
+        
+        index index.php index.html index.htm;
+
+        root /var/www/html;
+
+        location ~ /.well-known/acme-challenge {
+                allow all;
+                root /var/www/html;
+        }
+
+        location / {
+                try_files $uri $uri/ /index.php$is_args$args;
+        }
+
+        location ~ \.php$ {
+                try_files $uri =404;
+                fastcgi_split_path_info ^(.+\.php)(/.+)$;
+                fastcgi_pass wordpress:9000;
+                fastcgi_index index.php;
+                include fastcgi_params;
+                fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+                fastcgi_param PATH_INFO $fastcgi_path_info;
+        }
+
+        location ~ /\.ht {
+                deny all;
+        }
+
+        location = /favicon.ico {
+                log_not_found off; access_log off;
+        }
+        location = /robots.txt {
+                log_not_found off; access_log off; allow all;
+        }
+        location ~* \.(css|gif|ico|jpeg|jpg|js|png)$ {
+                expires max;
+                log_not_found off;
+        }
+}
+
+root@petrv-linux:/home/petrv/wordpress# nano .env
+
+.env *
+
+root@petrv-linux:/home/petrv/wordpress# nano /home/petrv/init-file.txt
+
+UPDATE mysql.user SET password=password('новый пароль') WHERE user='root';
+
+root@petrv-linux:/home/petrv/wordpress# systemctl stop mysql
+root@petrv-linux:/home/petrv/wordpress# mysqld --user=mysql --init-file=/home/db/init-file.txt --console
+root@petrv-linux:/home/petrv/wordpress#
+
+root@petrv-linux:/home/petrv/wordpress# systemctl start mysql
+root@petrv-linux:/home/petrv/wordpress# mysql -u root -p
+Enter password:
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 8
+Server version: 8.0.32-0ubuntu0.22.04.2 (Ubuntu)
+
+Copyright (c) 2000, 2023, Oracle and/or its affiliates.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql>
+mysql> CREATE USER 'test_user'@'localhost' IDENTIFIED BY 'password';
+
+mysql> SELECT User,Host FROM mysql.user;
++------------------+-----------+
+| User             | Host      |
++------------------+-----------+
+| debian-sys-maint | localhost |
+| mysql.infoschema | localhost |
+| mysql.session    | localhost |
+| mysql.sys        | localhost |
+| petr             | localhost |
+| root             | localhost |
++------------------+-----------+
+6 rows in set (0,00 sec)
+
+mysql>
+mysql> exit
+Bye
+root@petrv-linux:/home/petrv/wordpress#
+
+root@petrv-linux:/home/petrv/wordpress# nano .gitignore
+
+.gitignore
+
+root@petrv-linux:/home/petrv/wordpress# nano .dockerignore
+
+.env
+.git
+docker-compose.yml
+.dockerigno
+
+petrv@petrv-linux:~$ nano docker-compose.yml
+
+version: '3'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: db
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - MYSQL_DATABASE=wordpress
+    volumes:
+      - dbdata:/var/lib/mysql
+    command: '--default-authentication-plugin=mysql_native_password'
+    networks:
+      - app-network
+
+  wordpress:
+    depends_on:
+      - db
+    image: wordpress:5.1.1-fpm-alpine
+    container_name: wordpress
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - WORDPRESS_DB_HOST=db:3306
+      - WORDPRESS_DB_USER=$MYSQL_USER
+      - WORDPRESS_DB_PASSWORD=$MYSQL_PASSWORD
+      - WORDPRESS_DB_NAME=wordpress
+    volumes:
+      - wordpress:/var/www/html
+    networks:
+      - app-network
+
+  webserver:
+    depends_on:
+      - wordpress
+    image: nginx:1.15.12-alpine
+    container_name: webserver
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - wordpress:/var/www/html
+      - ./nginx-conf:/etc/nginx/conf.d
+      - certbot-etc:/etc/letsencrypt
+    networks:
+      - app-network
+
+  certbot:
+    depends_on:
+      - webserver
+    image: certbot/certbot
+    container_name: certbot
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - wordpress:/var/www/html
+    command: certonly --webroot --webroot-path=/var/www/html --email petrv2011@hotmail.com --agree-tos --no-eff-email --staging -d example.com -d www.example.com
+(Нужно обязательно заменить example.com на ваш собственный)
+
+volumes:
+  certbot-etc:
+  wordpress:
+  dbdata:
+
+networks:
+  app-network:
+    driver: bridge
+
+root@petrv-linux:/home/petrv/wordpress# systemctl stop apache2
+root@petrv-linux:/home/petrv/wordpress#
+root@petrv-linux:/home/petrv/wordpress# systemctl stop nginx
+root@petrv-linux:/home/petrv/wordpress#
+
+root@petrv-linux:/home/petrv/wordpress# docker-compose up -d
+
+db is up-to-date
+wordpress is up-to-date
+Starting webserver ... done
+Creating certbot   ... done
+root@petrv-linux:/home/petrv/wordpress#
+
+root@petrv-linux:/home/petrv/wordpress# docker-compose ps
+certbot     certbot certonly --webroot ...   Exit 1
+db          docker-entrypoint.sh --def ...   Up       3306/tcp, 33060/tcp
+webserver   nginx -g daemon off;             Up       0.0.0.0:80->80/tcp,:::80->80/tcp
+wordpress   docker-entrypoint.sh php-fpm     Up       9000/tcp
+root@petrv-linux:/home/petrv/wordpress#
+
+http://localhost:9080/wp-admin/
+
+
+
+
+
